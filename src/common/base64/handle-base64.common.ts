@@ -1,5 +1,5 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { ExceptionResponseDetail } from '../utils.exception.common/utils.exception.common';
+import { ExceptionResponseDetail } from '../exception/exception.common';
 
 export class HandleBase64 {
   private api_key: string;

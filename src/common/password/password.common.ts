@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { ExceptionResponseDetail } from '../utils.exception.common/utils.exception.common';
-import { HandleBase64 } from '../utils.handle-base64.common/utils.handle-base64.common';
+import { ExceptionResponseDetail } from '../exception/exception.common';
+import { HandleBase64 } from '../base64/handle-base64.common';
 
 export class Password {
   private password: string;

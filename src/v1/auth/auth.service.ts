@@ -70,13 +70,16 @@ export class AuthService {
   // }
 
   /**
-   * @param userData Prisma.UserCreateInput
-   * @returns UserResponse | null
+   * Tạo một người dùng mới trong hệ thống.
+   *
+   * @param userData Thông tin của người dùng mới.
+   * @returns Người dùng mới được tạo thành công hoặc thông báo lỗi nếu có.
    */
   async createUser(
     userData: UserRegisterRequest,
   ): Promise<UserResponse | string | null> {
     try {
+      // Kiểm tra xem người dùng đã tồn tại hay chưa
       const existingUser = await this.databaseService.user.findFirst({
         where: {
           OR: [{ email: userData.email }, { username: userData.username }],
@@ -84,16 +87,18 @@ export class AuthService {
       });
 
       if (existingUser) {
+        // Trả về thông báo lỗi nếu email hoặc username đã tồn tại
         return 'Email hoặc username đã tồn tại!';
       }
 
+      // Nếu người dùng sử dụng đăng nhập bằng tên người dùng và mật khẩu
       if (
         userData.provider &&
         userData.provider === AccountProviderEnum.CREDENTIALS
       ) {
-        //Nếu không phải là oauth thì kiểm tra và mã hoá mật khẩu
-        //Nếu mật khẩu không hợp lệ -> dừng quá trình tạo tài khoản
+        // Kiểm tra và mã hoá mật khẩu
         if (!userData.password || userData.password.trim().length < 6) {
+          // Trả về thông báo lỗi nếu mật khẩu không hợp lệ
           return 'Mật khẩu phải có ít nhất 6 ký tự!';
         }
         userData.password = String(
@@ -103,14 +108,17 @@ export class AuthService {
         );
       }
 
+      // Tìm và lấy role cho người dùng
       const role = await this.findRole(UserRoleEnum.USER);
+
+      // Tạo người dùng mới trong cơ sở dữ liệu
       const createdUser: UserResponse = await this.databaseService.user.create({
         data: {
           ...userData,
           created_at: new Date().getTime(),
           updated_at: new Date().getTime(),
           roles: {
-            connect: [{ id: role[0].id }], //Kết nối đến role USER
+            connect: [{ id: role[0].id }], // Kết nối đến role USER
           },
         },
         select: {
@@ -126,7 +134,7 @@ export class AuthService {
       });
 
       if (createdUser) {
-        //Ghi log
+        // Ghi log khi tạo người dùng thành công
         await this.kafkaProducerService.sendAuthLogger({
           user_id: createdUser.id,
           actor: 'USER',
@@ -137,10 +145,12 @@ export class AuthService {
           type: 'INFO',
           auth_action: 'REGISTER',
         });
+
         try {
+          // Gửi email xác nhận đến người dùng
           await this.sendVerificationEmail(createdUser.email, createdUser.name);
 
-          //Ghi log
+          // Ghi log khi gửi email xác nhận thành công
           await this.kafkaProducerService.sendAuthLogger({
             user_id: createdUser.id,
             actor: 'USER',
@@ -152,13 +162,13 @@ export class AuthService {
             auth_action: 'REGISTER',
           });
         } catch (error) {
+          // Nếu gửi email xác nhận thất bại, xóa người dùng đã tạo và ghi log lỗi
           await this.databaseService.user.delete({
             where: {
               id: createdUser.id,
             },
           });
 
-          //Ghi log
           await this.kafkaProducerService.sendAuthLogger({
             user_id: createdUser.id,
             actor: 'SYSTEM',
@@ -177,7 +187,7 @@ export class AuthService {
 
       return createdUser ? createdUser : 'Tạo người dùng không thành công';
     } catch (error) {
-      //Ghi log
+      // Ghi log khi tạo người dùng không thành công
       await this.kafkaProducerService.sendAuthLogger({
         user_id: null,
         actor: 'SYSTEM',
@@ -196,15 +206,18 @@ export class AuthService {
   }
 
   /**
-   * @param username
-   * @param password
-   * @returns { error?: { message: string }; success?: { data: UserResponse }; }
+   * Xử lý đăng nhập bằng tên người dùng và mật khẩu.
+   *
+   * @param username Tên người dùng hoặc email.
+   * @param password Mật khẩu của người dùng.
+   * @returns Thông tin người dùng hoặc mã lỗi nếu có.
    */
   async credentialLogin(
     username: string,
     password: string,
   ): Promise<UserResponse | string | null> {
     try {
+      // Tìm kiếm người dùng trong cơ sở dữ liệu dựa trên tên người dùng hoặc email
       const existingUser = await this.userService.findOneUser(
         username,
         false,
@@ -214,10 +227,13 @@ export class AuthService {
       );
 
       if (!existingUser) {
+        // Trả về mã lỗi nếu không tìm thấy người dùng
         return 'USER_NOT_FOUND';
       }
 
+      // So sánh mật khẩu được cung cấp với mật khẩu trong cơ sở dữ liệu
       if (await Password.comparePassword(password, existingUser.password)) {
+        // Nếu mật khẩu đúng, tạo JWT token cho người dùng và ghi log đăng nhập thành công
         if (existingUser) {
           existingUser.backend_token = await this.generateJwt(
             existingUser.id,
@@ -226,55 +242,61 @@ export class AuthService {
           );
         }
 
-        delete existingUser.password;
+        delete existingUser.password; // Xóa mật khẩu trước khi trả về thông tin người dùng
 
-        //Ghi log
+        // Ghi log đăng nhập thành công
         await this.kafkaProducerService.sendAuthLogger({
           user_id: existingUser.id,
           actor: 'USER',
           log_date: moment().utcOffset('+07:00').toDate(),
           message: `Đăng nhập vào tài khoảng có email ${existingUser.email} thành công`,
-          result: 'Đănh nhập thành công',
+          result: 'Đăng nhập thành công',
           public: true,
           type: 'INFO',
           auth_action: 'LOGIN',
         });
 
-        return existingUser;
+        return existingUser; // Trả về thông tin người dùng sau khi đăng nhập thành công
       } else {
-        //Ghi log
+        // Ghi log đăng nhập không thành công vì sai mật khẩu
         await this.kafkaProducerService.sendAuthLogger({
           user_id: existingUser.id,
           actor: 'USER',
           log_date: moment().utcOffset('+07:00').toDate(),
           message: `Đăng nhập vào tài khoảng có email ${existingUser.email} không thành công do sai mật khẩu`,
-          result: 'Đănh nhập không thành công',
+          result: 'Đăng nhập không thành công',
           public: true,
           type: 'ERROR',
           auth_action: 'LOGIN',
         });
 
-        return 'INCORRECT_PASSWORD';
+        return 'INCORRECT_PASSWORD'; // Trả về mã lỗi nếu mật khẩu không đúng
       }
     } catch (error) {
-      //Ghi log
+      // Ghi log khi xảy ra lỗi trong quá trình đăng nhập
       await this.kafkaProducerService.sendAuthLogger({
         user_id: null,
         actor: 'SYSTEM',
         log_date: moment().utcOffset('+07:00').toDate(),
         message: `Đăng nhập vào tài khoảng có email/username ${username} không thành công`,
-        result: 'Đănh nhập không thành công',
+        result: 'Đăng nhập không thành công',
         public: false,
         type: 'ERROR',
         auth_action: 'LOGIN',
         error_message: error.message.toString(),
       });
 
-      console.log(error.message);
-      return 'LOGIN_ERROR';
+      console.error(error.message);
+      return 'LOGIN_ERROR'; // Trả về mã lỗi tổng quát nếu xảy ra lỗi trong quá trình đăng nhập
     }
   }
 
+  /**
+   * Tìm kiếm các vai trò trong cơ sở dữ liệu dựa trên tên vai trò.
+   *
+   * @param roleName Tên của vai trò cần tìm kiếm.
+   * @returns Mảng các vai trò được tìm thấy.
+   */
   async findRole(roleName?: string): Promise<Role[]> {
     const query: Prisma.RoleFindManyArgs = {};
 
@@ -285,6 +307,15 @@ export class AuthService {
     return await this.databaseService.role.findMany(query);
   }
 
+  /**
+   * Tạo mã JWT cho người dùng.
+   *
+   * @param userId ID của người dùng.
+   * @param email Email của người dùng.
+   * @param name Tên của người dùng.
+   * @param withRefreshToken Flag chỉ định xem có tạo refresh token hay không. Mặc định là true.
+   * @returns Đối tượng chứa access token, refresh token và thời gian hết hạn.
+   */
   async generateJwt(
     userId: number,
     email: string,
@@ -307,7 +338,7 @@ export class AuthService {
 
     const result: FullTokenResponse = {
       access_token: await this.jwtService.signAsync(payload, {
-        expiresIn: '30m', //Thời gian hết hạn
+        expiresIn: '30m', // Thời gian hết hạn
         secret: this.configService.get('CONFIG_JWT_SECRET'),
       }),
       expires_in: futureTimestamp.toString(),
@@ -315,7 +346,7 @@ export class AuthService {
 
     if (withRefreshToken) {
       result.refresh_token = await this.jwtService.signAsync(payload, {
-        expiresIn: '7d', //Thời gian hết hạn
+        expiresIn: '7d', // Thời gian hết hạn
         secret: this.configService.get('CONFIG_JWT_REFRESH_TOKEN'),
       });
     }
@@ -324,8 +355,11 @@ export class AuthService {
   }
 
   /**
-   * @param email string
-   * @param name string
+   * Gửi mã xác nhận đến địa chỉ email đã cho.
+   *
+   * @param email Địa chỉ email của người dùng.
+   * @param name Tên của người dùng.
+   * @returns true nếu gửi mã thành công, ngược lại trả về false.
    */
   async sendVerificationEmail(email: string, name: string): Promise<boolean> {
     try {
@@ -391,7 +425,13 @@ export class AuthService {
     }
   }
 
-  //Xác nhận email
+  /**
+   * Xác nhận email của người dùng bằng mã xác nhận.
+   *
+   * @param email Địa chỉ email của người dùng.
+   * @param code Mã xác nhận gửi đến email.
+   * @returns true nếu xác nhận thành công, false nếu mã không hợp lệ hoặc đã hết hạn.
+   */
   async verificationEmail(email: string, code: number): Promise<boolean> {
     try {
       const existingCode =
@@ -412,7 +452,7 @@ export class AuthService {
           auth_action: 'VERIFICATION_EMAIL',
         });
 
-        return null;
+        return false;
       }
 
       if (
@@ -466,7 +506,7 @@ export class AuthService {
       });
 
       console.error(error.message);
-      return null;
+      return false;
     }
   }
 
@@ -779,7 +819,14 @@ export class AuthService {
     }
   }
 
-  //Đổi mật khẩu mới
+  /**
+   * Thay đổi mật khẩu của người dùng.
+   *
+   * @param email Địa chỉ email của người dùng.
+   * @param oldPassword Mật khẩu cũ của người dùng.
+   * @param password Mật khẩu mới của người dùng.
+   * @returns true nếu thay đổi mật khẩu thành công, ngược lại trả về false.
+   */
   async changeNewPassword(
     email: string,
     oldPassword: string,
@@ -792,6 +839,7 @@ export class AuthService {
 
       if (!existingUser) return false;
 
+      // Kiểm tra xem mật khẩu cũ có đúng không
       const oldPasswordBcrypt: string = String(
         await Password.bcryptPassword(
           await HandleBase64.decodePasswordBase64(oldPassword),
@@ -799,7 +847,7 @@ export class AuthService {
       );
 
       if (oldPasswordBcrypt !== existingUser.password) {
-        //ghi log
+        // Ghi log nếu mật khẩu cũ không đúng
         await this.kafkaProducerService.sendAuthLogger({
           user_id: existingUser.id,
           actor: 'USER',
@@ -814,6 +862,7 @@ export class AuthService {
         return false;
       }
 
+      // Mã hoá mật khẩu mới và cập nhật vào cơ sở dữ liệu
       const newPassword: string = String(
         await Password.bcryptPassword(
           await HandleBase64.decodePasswordBase64(password),
@@ -829,7 +878,7 @@ export class AuthService {
         },
       });
 
-      //ghi log
+      // Ghi log khi thay đổi mật khẩu thành công
       await this.kafkaProducerService.sendAuthLogger({
         user_id: existingUser.id,
         actor: 'USER',
@@ -843,7 +892,7 @@ export class AuthService {
 
       return true;
     } catch (error) {
-      //ghi log
+      // Ghi log khi xảy ra lỗi trong quá trình thay đổi mật khẩu
       await this.kafkaProducerService.sendAuthLogger({
         user_id: null,
         actor: 'SYSTEM',
