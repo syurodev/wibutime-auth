@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package usergrpc;
+
+service userGRPCService {
+  rpc GetUserDetail (GetUserDetailRequest) returns (GetUserDetailResponse) {}
+}
+
+message GetUserDetailRequest {
+  string slug = 1;
+  bool useId = 2;
+  bool withPassword = 3;
+  bool withRole = 4;
+  bool withPermission = 5;
+}
+
+message GetUserDetailResponse {
+  ErrorResponse error = 1;
+  UserDataResponse success = 2;
+}
+
+message FullTokenResponse {
+  string accessToken = 1;
+  string refreshToken = 2;
+}
+
+message UserDataResponse {
+  int32 id = 1;
+  string name = 2;
+  string email = 3;
+  bool email_verified = 4;
+  string image = 5;
+  int32 coins = 6;
+  string provider = 7;
+  optional string username = 8;
+  optional string password = 9;
+  repeated string roles = 10;
+  repeated string permissions = 11;
+}
+
+message ErrorResponse {
+  string message = 1;
+}

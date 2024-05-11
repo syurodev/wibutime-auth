@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package AUTH_SERVICE_GRPC_PACKAGE;
+
+service AuthGRPCService {
+  rpc Login (LoginRequest) returns (LoginResponse) {}
+  rpc GoogleLogin (GoogleProfile) returns (EmptyResponse) {}
+  rpc RefreshToken (RefreshTokenRequest) returns (RefreshTokenResponse) {}
+  rpc Register (UserRegisterRequest) returns (UserRegisterResponse) {}
+
+  rpc SendVerification (SendVerificationRequest) returns (EmptyResponse) {}
+  rpc VerificationEmail (VerificationEmailRequest) returns (EmptyResponse) {}
+
+  rpc ForgotPassword (ForgotPasswordRequest) returns (EmptyResponse) {}
+  rpc VerificationForgotPassword (VerificationForgotPasswordRequest) returns (EmptyResponse) {}
+  rpc ResetPassword (ResetPasswordRequest) returns (EmptyResponse) {}
+  
+  rpc ChangePassword (ChangePasswordRequest) returns (EmptyResponse) {}
+  rpc VerificationChangePassword (VerificationChangePasswordRequest) returns (EmptyResponse) {}
+  rpc ChangeNewPassword (ChangeNewPasswordRequest) returns (EmptyResponse) {}
+}
+
+message UserRegisterRequest {
+  string email = 1;
+  optional string phone = 2;
+  string name = 3;
+  optional string username = 4;
+  optional string password = 5;
+  optional string image = 6;
+  optional string image_key = 7;
+  optional string provider = 8;
+}
+
+message UserRegisterResponse {
+  int32 status = 1;
+  string message = 2;
+  UserDataResponse data = 3;
+}
+
+//VERIFICATION EMAIL
+message VerificationEmailRequest {
+  int32 code = 1;
+  string email = 2;
+}
+
+//RESET PASSWORD
+message ResetPasswordRequest {
+  string password = 1;
+  string email = 2;
+}
+
+// FORGOT PASSWORD
+message ForgotPasswordRequest {
+  string email = 1;
+}
+
+// VERIFICATION FORGOT PASSWORD
+message VerificationForgotPasswordRequest {
+  string email = 1;
+  int32 code = 2;
+}
+
+// CHANGE PASSWORD
+message ChangePasswordRequest {
+  string email = 1;
+}
+
+// VERIFICATION CHANGE PASSWORD
+message VerificationChangePasswordRequest {
+  string email = 1;
+  int32 code = 2;
+}
+
+//CHANGE NEW PASSWORD
+message ChangeNewPasswordRequest {
+  string password = 1;
+  string oldPassword = 2;
+  string email = 3;
+}
+
+//LOGIN
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message FullTokenResponse {
+  string accessToken = 1;
+  string expires_in = 2;
+  string refreshToken = 3;
+}
+
+message UserDataResponse {
+  int32 id = 1;
+  string name = 2;
+  string email = 3;
+  string image = 4;
+  bool email_verified = 5;
+  int32 coins = 6;
+  string provider = 7;
+  optional string username = 8;
+  optional string password = 9;
+  optional FullTokenResponse backendToken = 10;
+  repeated string roles = 11;
+  repeated string permissions = 12;
+}
+
+message LoginResponse {
+  int32 status = 1;
+  string message = 2;
+  UserDataResponse data = 3;
+}
+
+message RefreshTokenRequest {
+  int32 id = 1;
+  string email = 2;
+  string name = 3;
+}
+
+message AccessToken {
+  string accessToken = 1;
+  string expires_in = 2;
+}
+
+message RefreshTokenResponse {
+  int32 status = 1;
+  string message = 2;
+  AccessToken data = 3;
+}
+
+//SEND VERIFICATION CODE
+message SendVerificationRequest {
+  string email = 1;
+  string name = 2;
+}
+
+message GoogleProfileName {
+  string familyName = 1;
+  string givenName = 2;
+  string middleName = 3;
+}
+
+message GoogleProfileEmail {
+  string value = 1;
+  string type = 2;
+}
+
+message GoogleProfilePhoto {
+  string value = 1;
+}
+
+message GoogleProfile {
+  string provider = 1;
+  string id = 2;
+  string displayName = 3;
+  string username = 4;
+  GoogleProfileName name = 5;
+  repeated GoogleProfileEmail emails = 6;
+  repeated GoogleProfilePhoto photos = 7;
+}
+
+message EmptyResponse {
+  int32 status = 1;
+  string message = 2;
+  string data = 3;
+}
