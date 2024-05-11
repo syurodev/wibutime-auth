@@ -23,8 +23,8 @@ import {
   UserRegisterRequest,
   UserRegisterResponse,
 } from 'src/proto/auth/auth';
-import { VersionEnum } from 'src/utils/utils.enums/utils.version.enum';
-import { BaseResponseData } from 'src/utils/utils.response.common/utils.base.response.common';
+import { VersionEnum } from 'src/common/enums/utils.version.enum';
+import { BaseResponseData } from 'src/common/response/base.response.common';
 
 @Controller({
   version: VersionEnum.V1.toString(),

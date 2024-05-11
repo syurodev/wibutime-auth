@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, User } from '@prisma/client';
 
 import { DatabaseService } from '../database/database.service';
-import { UserDataResponse } from 'src/protos/user/user';
+import { UserDataResponse } from 'src/proto/user/user';
 
 export type UserQuery = User & {
   roles?: [

@@ -1,8 +1,10 @@
+import { config } from 'dotenv';
+config();
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { config } from 'dotenv';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
-import { Partitioners } from 'kafkajs';
+// import { Partitioners } from 'kafkajs';
 import {
   HttpException,
   HttpStatus,
@@ -11,12 +13,10 @@ import {
   ValidationPipe,
   VersioningType,
 } from '@nestjs/common';
-
-import { ExceptionResponseDetail } from './utils/utils.exception.common/utils.exception.common';
-import { KafkaGroupIdEnum } from './utils/utils.enums/kafka-group-id-enum';
 import { join } from 'path';
+
 import { AUTH_SERVICE_GRPC_PACKAGE_PACKAGE_NAME } from './proto/auth/auth';
-config();
+import { ExceptionResponseDetail } from './common/exception/exception.common';
 
 async function bootstrap() {
   process.env.TZ = 'Asia/Ho_Chi_Minh';
@@ -32,22 +32,22 @@ async function bootstrap() {
   });
 
   //Kafka config
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.KAFKA,
-    options: {
-      client: {
-        brokers: [
-          `${process.env.CONFIG_KAFKA_HOST}:${process.env.CONFIG_KAFKA_PORT}`,
-        ],
-      },
-      consumer: {
-        groupId: KafkaGroupIdEnum.AUTH_SERVICE,
-      },
-      producer: {
-        createPartitioner: Partitioners.LegacyPartitioner,
-      },
-    },
-  });
+  // app.connectMicroservice<MicroserviceOptions>({
+  //   transport: Transport.KAFKA,
+  //   options: {
+  //     client: {
+  //       brokers: [
+  //         `${process.env.CONFIG_KAFKA_HOST}:${process.env.CONFIG_KAFKA_PORT}`,
+  //       ],
+  //     },
+  //     consumer: {
+  //       groupId: KafkaGroupIdEnum.AUTH_SERVICE,
+  //     },
+  //     producer: {
+  //       createPartitioner: Partitioners.LegacyPartitioner,
+  //     },
+  //   },
+  // });
 
   //gRPC config
   app.connectMicroservice<MicroserviceOptions>({

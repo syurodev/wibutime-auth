@@ -1,24 +1,25 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Profile } from 'passport';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, Role } from '@prisma/client';
 import * as moment from 'moment';
 
-import { ParseGoogleProfile } from 'src/utils/utils.parse.common/utils.parse.google.profile.common';
 import { UserService } from '../user/user.service';
-import { Password } from 'src/utils/utils.password.common/utils.password.common';
-import { AccountProviderEnum } from 'src/utils/utils.enums/account-provider.enum';
-import { HandleBase64 } from 'src/utils/utils.handle-base64.common/utils.handle-base64.common';
-import { UserRoleEnum } from 'src/utils/utils.enums/user-roles.enums';
 import { DatabaseService } from '../database/database.service';
 import { MailService } from '../mail/mail.service';
-import { GenerateCode } from 'src/utils/utils.generate.common/utils.generate-code.common';
 import { FullTokenResponse, UserRegisterRequest } from 'src/proto/auth/auth';
+import { AccountProviderEnum } from 'src/common/enums/account-provider.enum';
+import { Password } from 'src/common/password/password.common';
+import { HandleBase64 } from 'src/common/base64/handle-base64.common';
+import { UserRoleEnum } from 'src/common/enums/user-roles.enums';
+import { GenerateCode } from 'src/common/generate/generate-code.common';
+import { KafkaProducerService } from 'src/kafka/producer.service';
 
 @Injectable()
 export class AuthService {
   constructor(
+    //Kafka
+    private readonly kafkaProducerService: KafkaProducerService,
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
@@ -125,13 +126,49 @@ export class AuthService {
       });
 
       if (createdUser) {
+        //Ghi log
+        await this.kafkaProducerService.sendAuthLogger({
+          user_id: createdUser.id,
+          actor: 'USER',
+          log_date: moment().utcOffset('+07:00').toDate(),
+          message: `Tạo người dùng với email: ${createdUser.email} thành công`,
+          result: 'Tạo người dùng thành công',
+          public: true,
+          type: 'INFO',
+          auth_action: 'REGISTER',
+        });
         try {
           await this.sendVerificationEmail(createdUser.email, createdUser.name);
+
+          //Ghi log
+          await this.kafkaProducerService.sendAuthLogger({
+            user_id: createdUser.id,
+            actor: 'USER',
+            log_date: moment().utcOffset('+07:00').toDate(),
+            message: `Gửi mã xác nhận đến email: ${createdUser.email} thành công`,
+            result: 'Gửi mã xác nhận thành công',
+            public: true,
+            type: 'INFO',
+            auth_action: 'REGISTER',
+          });
         } catch (error) {
           await this.databaseService.user.delete({
             where: {
               id: createdUser.id,
             },
+          });
+
+          //Ghi log
+          await this.kafkaProducerService.sendAuthLogger({
+            user_id: createdUser.id,
+            actor: 'SYSTEM',
+            log_date: moment().utcOffset('+07:00').toDate(),
+            message: `Tạo người dùng với email ${createdUser.email} thành công nhưng gửi email xác nhận thất bại`,
+            result: `Tài khoản đã tạo với email ${createdUser.email} đã bị xoá`,
+            public: false,
+            type: 'ERROR',
+            error_message: error.message.toString(),
+            auth_action: 'REGISTER',
           });
 
           return 'Tạo người dùng không thành công';
@@ -140,6 +177,19 @@ export class AuthService {
 
       return createdUser ? createdUser : 'Tạo người dùng không thành công';
     } catch (error) {
+      //Ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Tạo người dùng với email: ${userData.email} không thành công`,
+        result: 'Tạo người dùng không thành công',
+        public: false,
+        type: 'ERROR',
+        error_message: error.message.toString(),
+        auth_action: 'REGISTER',
+      });
+
       console.error(error.message);
       return 'Tạo người dùng không thành công';
     }
@@ -168,8 +218,6 @@ export class AuthService {
       }
 
       if (await Password.comparePassword(password, existingUser.password)) {
-        delete existingUser.password;
-
         if (existingUser) {
           existingUser.backend_token = await this.generateJwt(
             existingUser.id,
@@ -178,11 +226,50 @@ export class AuthService {
           );
         }
 
+        delete existingUser.password;
+
+        //Ghi log
+        await this.kafkaProducerService.sendAuthLogger({
+          user_id: existingUser.id,
+          actor: 'USER',
+          log_date: moment().utcOffset('+07:00').toDate(),
+          message: `Đăng nhập vào tài khoảng có email ${existingUser.email} thành công`,
+          result: 'Đănh nhập thành công',
+          public: true,
+          type: 'INFO',
+          auth_action: 'LOGIN',
+        });
+
         return existingUser;
       } else {
+        //Ghi log
+        await this.kafkaProducerService.sendAuthLogger({
+          user_id: existingUser.id,
+          actor: 'USER',
+          log_date: moment().utcOffset('+07:00').toDate(),
+          message: `Đăng nhập vào tài khoảng có email ${existingUser.email} không thành công do sai mật khẩu`,
+          result: 'Đănh nhập không thành công',
+          public: true,
+          type: 'ERROR',
+          auth_action: 'LOGIN',
+        });
+
         return 'INCORRECT_PASSWORD';
       }
     } catch (error) {
+      //Ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Đăng nhập vào tài khoảng có email/username ${username} không thành công`,
+        result: 'Đănh nhập không thành công',
+        public: false,
+        type: 'ERROR',
+        auth_action: 'LOGIN',
+        error_message: error.message.toString(),
+      });
+
       console.log(error.message);
       return 'LOGIN_ERROR';
     }
@@ -272,8 +359,33 @@ export class AuthService {
         code,
       );
 
+      //Ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Gửi mã đến email ${email} thành công`,
+        result: 'Gửi mã thành công',
+        public: false,
+        type: 'INFO',
+        auth_action: 'SEND_CODE',
+      });
+
       return true;
     } catch (error) {
+      //Ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Gửi mã đến email ${email} không thành công`,
+        result: 'Gửi mã không thành công',
+        public: false,
+        type: 'ERROR',
+        auth_action: 'SEND_CODE',
+        error_message: error.message.toString(),
+      });
+
       console.error(error.message);
       return false;
     }
@@ -288,6 +400,18 @@ export class AuthService {
         });
 
       if (!existingCode) {
+        //Ghi log
+        await this.kafkaProducerService.sendAuthLogger({
+          user_id: null,
+          actor: 'USER',
+          log_date: moment().utcOffset('+07:00').toDate(),
+          message: `Xác thực email ${email} không thành công do mã được truyền vào không tồn tại`,
+          result: 'Xác thực email không thành công',
+          public: true,
+          type: 'ERROR',
+          auth_action: 'VERIFICATION_EMAIL',
+        });
+
         return null;
       }
 
@@ -299,13 +423,28 @@ export class AuthService {
           where: { email },
         });
 
-        await this.databaseService.user.update({
+        const result = await this.databaseService.user.update({
           where: {
             email: email,
           },
           data: {
             email_verified: true,
           },
+          select: {
+            id: true,
+          },
+        });
+
+        //Ghi log
+        await this.kafkaProducerService.sendAuthLogger({
+          user_id: result.id,
+          actor: 'USER',
+          log_date: moment().utcOffset('+07:00').toDate(),
+          message: `Xác thực email ${email} thành công`,
+          result: 'Xác thực email thành công',
+          public: true,
+          type: 'INFO',
+          auth_action: 'VERIFICATION_EMAIL',
         });
 
         return true;
@@ -313,6 +452,19 @@ export class AuthService {
 
       return false;
     } catch (error) {
+      //Ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Xác thực email ${email} không thành công`,
+        result: 'Xác thực email không thành công',
+        public: false,
+        type: 'ERROR',
+        auth_action: 'VERIFICATION_EMAIL',
+        error_message: error.message.toString(),
+      });
+
       console.error(error.message);
       return null;
     }
@@ -350,9 +502,33 @@ export class AuthService {
       });
 
       await this.mailService.sendVerificationForgotPassword(email, code);
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'USER',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Gửi mã xác thực đến ${email} thành công`,
+        result: 'Gửi mã xác thực thành công',
+        public: true,
+        type: 'INFO',
+        auth_action: 'SEND_CODE',
+      });
       return true;
     } catch (error) {
-      Logger.error(error.message);
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Gửi mã xác thực đến ${email} không thành công`,
+        result: 'Gửi mã xác thực không thành công',
+        public: false,
+        type: 'ERROR',
+        auth_action: 'SEND_CODE',
+        error_message: error.message.toString(),
+      });
+
+      console.log(error.message);
       return false;
     }
   }
@@ -372,15 +548,42 @@ export class AuthService {
         ),
       );
 
-      await this.databaseService.user.update({
+      const result = await this.databaseService.user.update({
         where: { email: email },
         data: {
           password: newPassword,
         },
+        select: {
+          id: true,
+        },
+      });
+
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: result.id,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Đặt lại mật khẩu tài khoản có email ${email} thành công`,
+        result: 'Đặt lại mật khẩu thành công',
+        public: true,
+        type: 'INFO',
+        auth_action: 'RESET_PASSWORD',
       });
 
       return true;
     } catch (error) {
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Đặt lại mật khẩu tài khoản có email ${email} không thành công`,
+        result: 'Đặt lại mật khẩu không thành công',
+        public: false,
+        type: 'ERROR',
+        auth_action: 'RESET_PASSWORD',
+        error_message: error.message.toString(),
+      });
       console.error(error.message);
       return false;
     }
@@ -406,11 +609,46 @@ export class AuthService {
           where: { email },
         });
 
+        //ghi log
+        await this.kafkaProducerService.sendAuthLogger({
+          user_id: null,
+          actor: 'USER',
+          log_date: moment().utcOffset('+07:00').toDate(),
+          message: `Xác nhận mã đặt lại mật khẩu tài khoản có email ${email} thành công`,
+          result: 'Xác nhận mã đặt lại mật khẩu thành công',
+          public: true,
+          type: 'INFO',
+          auth_action: 'RESET_PASSWORD',
+        });
+
         return true;
       }
 
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'USER',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Xác nhận mã đặt lại mật khẩu tài khoản có email ${email} không thành công do code sai hoặc code hết hạn`,
+        result: 'Xác nhận mã đặt lại mật khẩu không thành công',
+        public: true,
+        type: 'ERROR',
+        auth_action: 'RESET_PASSWORD',
+      });
       return false;
     } catch (error) {
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Xác nhận mã đặt lại mật khẩu tài khoản có email ${email} không thành công`,
+        result: 'Xác nhận mã đặt lại mật khẩu không thành công',
+        public: false,
+        type: 'ERROR',
+        auth_action: 'RESET_PASSWORD',
+        error_message: error.message.toString(),
+      });
       console.error(error.message);
       return null;
     }
@@ -443,9 +681,34 @@ export class AuthService {
 
       await this.mailService.sendVerificationChangePassword(email, code);
 
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'USER',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Gửi mã đổi mật khẩu tài khoản có email ${email} thành công`,
+        result: 'Gửi mã đổi mật khẩu thành công',
+        public: true,
+        type: 'INFO',
+        auth_action: 'CHANGE_PASSWORD',
+      });
+
       return true;
     } catch (error) {
-      Logger.error(error.message);
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Gửi mã đổi mật khẩu tài khoản có email ${email} không thành công`,
+        result: 'Gửi mã đổi mật khẩu không thành công',
+        public: false,
+        type: 'ERROR',
+        auth_action: 'CHANGE_PASSWORD',
+        error_message: error.message.toString(),
+      });
+
+      console.log(error.message);
       return false;
     }
   }
@@ -470,11 +733,47 @@ export class AuthService {
           where: { email },
         });
 
+        //ghi log
+        await this.kafkaProducerService.sendAuthLogger({
+          user_id: null,
+          actor: 'USER',
+          log_date: moment().utcOffset('+07:00').toDate(),
+          message: `Xác nhận mã đổi mật khẩu tài khoản có email ${email} thành công`,
+          result: 'Xác nhận mã đổi mật khẩu thành công',
+          public: true,
+          type: 'INFO',
+          auth_action: 'RESET_PASSWORD',
+        });
+
         return true;
       }
 
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'USER',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Xác nhận mã đổi mật khẩu tài khoản có email ${email} không thành công do code sai hoặc code hết hạn`,
+        result: 'Xác nhận mã đổi mật khẩu không thành công',
+        public: true,
+        type: 'ERROR',
+        auth_action: 'CHANGE_PASSWORD',
+      });
+
       return false;
     } catch (error) {
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Xác nhận mã đổi mật khẩu tài khoản có email ${email} không thành công`,
+        result: 'Xác nhận mã đổi mật khẩu không thành công',
+        public: false,
+        type: 'ERROR',
+        auth_action: 'CHANGE_PASSWORD',
+        error_message: error.message.toString(),
+      });
       console.error(error.message);
       return null;
     }
@@ -499,7 +798,21 @@ export class AuthService {
         ),
       );
 
-      if (oldPasswordBcrypt !== existingUser.password) return false;
+      if (oldPasswordBcrypt !== existingUser.password) {
+        //ghi log
+        await this.kafkaProducerService.sendAuthLogger({
+          user_id: existingUser.id,
+          actor: 'USER',
+          log_date: moment().utcOffset('+07:00').toDate(),
+          message: `Đổi mật khẩu tài khoản có email ${email} không thành công do nhập mật khẩu cũ sai`,
+          result: 'Đổi mật khẩu không thành công',
+          public: true,
+          type: 'ERROR',
+          auth_action: 'CHANGE_PASSWORD',
+        });
+
+        return false;
+      }
 
       const newPassword: string = String(
         await Password.bcryptPassword(
@@ -511,10 +824,38 @@ export class AuthService {
         data: {
           password: newPassword,
         },
+        select: {
+          id: true,
+        },
+      });
+
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: existingUser.id,
+        actor: 'USER',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Đổi mật khẩu tài khoản có email ${email} thành công`,
+        result: 'Đổi mật khẩu thành công',
+        public: true,
+        type: 'INFO',
+        auth_action: 'CHANGE_PASSWORD',
       });
 
       return true;
     } catch (error) {
+      //ghi log
+      await this.kafkaProducerService.sendAuthLogger({
+        user_id: null,
+        actor: 'SYSTEM',
+        log_date: moment().utcOffset('+07:00').toDate(),
+        message: `Đổi mật khẩu tài khoản có email ${email} không thành công`,
+        result: 'Đổi mật khẩu không thành công',
+        public: true,
+        type: 'ERROR',
+        auth_action: 'CHANGE_PASSWORD',
+        error_message: error.message.toString(),
+      });
+
       console.error(error.message);
       return false;
     }
