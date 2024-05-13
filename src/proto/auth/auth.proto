@@ -85,9 +85,9 @@ message LoginRequest {
 }
 
 message FullTokenResponse {
-  string accessToken = 1;
+  string access_token = 1;
   string expires_in = 2;
-  string refreshToken = 3;
+  string refresh_token = 3;
 }
 
 message UserDataResponse {
@@ -100,7 +100,7 @@ message UserDataResponse {
   string provider = 7;
   optional string username = 8;
   optional string password = 9;
-  optional FullTokenResponse backendToken = 10;
+  optional FullTokenResponse backend_token = 10;
   repeated string roles = 11;
   repeated string permissions = 12;
 }
@@ -118,7 +118,7 @@ message RefreshTokenRequest {
 }
 
 message AccessToken {
-  string accessToken = 1;
+  string access_token = 1;
   string expires_in = 2;
 }
 

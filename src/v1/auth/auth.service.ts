@@ -244,6 +244,13 @@ export class AuthService {
 
         delete existingUser.password; // Xóa mật khẩu trước khi trả về thông tin người dùng
 
+        existingUser.backend_token = await this.generateJwt(
+          existingUser.id,
+          existingUser.email,
+          existingUser.name,
+          true,
+        );
+
         // Ghi log đăng nhập thành công
         await this.kafkaProducerService.sendAuthLogger({
           user_id: existingUser.id,

@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package usergrpc;
+package USER_SERVICE_GRPC_PACKAGE;
 
 service userGRPCService {
   rpc GetUserDetail (GetUserDetailRequest) returns (GetUserDetailResponse) {}
@@ -15,13 +15,9 @@ message GetUserDetailRequest {
 }
 
 message GetUserDetailResponse {
-  ErrorResponse error = 1;
-  UserDataResponse success = 2;
-}
-
-message FullTokenResponse {
-  string accessToken = 1;
-  string refreshToken = 2;
+  int32 status = 1;
+  string message = 2;
+  UserDataResponse data = 3;
 }
 
 message UserDataResponse {
@@ -36,8 +32,4 @@ message UserDataResponse {
   optional string password = 9;
   repeated string roles = 10;
   repeated string permissions = 11;
-}
-
-message ErrorResponse {
-  string message = 1;
 }
