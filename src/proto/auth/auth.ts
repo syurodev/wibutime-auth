@@ -17,7 +17,7 @@ export interface UserRegisterRequest {
   username?: string | undefined;
   password?: string | undefined;
   image?: string | undefined;
-  imageKey?: string | undefined;
+  image_key?: string | undefined;
   provider?: string | undefined;
 }
 
@@ -155,13 +155,23 @@ export interface EmptyResponse {
   data: string;
 }
 
+export interface VerificationJwtTokenRequest {
+  access_token: string;
+}
+
+export interface VerificationJwtTokenResponse {
+  status: number;
+  message: string;
+  data: UserDataResponse | undefined;
+}
+
 export const AUTH_SERVICE_GRPC_PACKAGE_PACKAGE_NAME =
   'AUTH_SERVICE_GRPC_PACKAGE';
 
 export interface AuthGRPCServiceClient {
   login(request: LoginRequest): Observable<LoginResponse>;
 
-  // googleLogin(request: GoogleProfile): Observable<EmptyResponse>;
+  googleLogin(request: GoogleProfile): Observable<EmptyResponse>;
 
   refreshToken(request: RefreshTokenRequest): Observable<RefreshTokenResponse>;
 
@@ -190,6 +200,10 @@ export interface AuthGRPCServiceClient {
   changeNewPassword(
     request: ChangeNewPasswordRequest,
   ): Observable<EmptyResponse>;
+
+  verificationJwtToken(
+    request: VerificationJwtTokenRequest,
+  ): Observable<VerificationJwtTokenResponse>;
 }
 
 export interface AuthGRPCServiceController {
@@ -197,9 +211,9 @@ export interface AuthGRPCServiceController {
     request: LoginRequest,
   ): Promise<LoginResponse> | Observable<LoginResponse> | LoginResponse;
 
-  // googleLogin(
-  //   request: GoogleProfile,
-  // ): Promise<EmptyResponse> | Observable<EmptyResponse> | EmptyResponse;
+  googleLogin(
+    request: GoogleProfile,
+  ): Promise<EmptyResponse> | Observable<EmptyResponse> | EmptyResponse;
 
   refreshToken(
     request: RefreshTokenRequest,
@@ -246,13 +260,20 @@ export interface AuthGRPCServiceController {
   changeNewPassword(
     request: ChangeNewPasswordRequest,
   ): Promise<EmptyResponse> | Observable<EmptyResponse> | EmptyResponse;
+
+  verificationJwtToken(
+    request: VerificationJwtTokenRequest,
+  ):
+    | Promise<VerificationJwtTokenResponse>
+    | Observable<VerificationJwtTokenResponse>
+    | VerificationJwtTokenResponse;
 }
 
 export function AuthGRPCServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
       'login',
-      // 'googleLogin',
+      'googleLogin',
       'refreshToken',
       'register',
       'sendVerification',
@@ -263,6 +284,7 @@ export function AuthGRPCServiceControllerMethods() {
       'changePassword',
       'verificationChangePassword',
       'changeNewPassword',
+      'verificationJwtToken',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(

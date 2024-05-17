@@ -22,9 +22,14 @@ import {
   SendVerificationRequest,
   UserRegisterRequest,
   UserRegisterResponse,
+  VerificationJwtTokenRequest,
+  VerificationJwtTokenResponse,
+  GoogleProfile,
 } from 'src/proto/auth/auth';
 import { VersionEnum } from 'src/common/enums/utils.version.enum';
 import { BaseResponseData } from 'src/common/response/base.response.common';
+import { Observable } from 'rxjs';
+import { AUTH_MESSAGE_RESPONSE } from 'src/common/enums/response/auth-message.enum';
 
 @Controller({
   version: VersionEnum.V1.toString(),
@@ -48,6 +53,10 @@ export class AuthController implements AuthGRPCServiceController {
   //   response.setData(result);
   //   return JSON.stringify(response);
   // }
+  async googleLogin(request: GoogleProfile): Promise<EmptyResponse> {
+    const response: BaseResponseData = new BaseResponseData();
+    return response;
+  }
 
   //Đăng nhập bằng tài khoản mật khẩu
   async login(request: LoginRequest): Promise<LoginResponse> {
@@ -332,6 +341,26 @@ export class AuthController implements AuthGRPCServiceController {
       HttpStatus.BAD_REQUEST,
       'Đổi mật khẩu không thành công!',
     );
+    return response;
+  }
+
+  async verificationJwtToken(
+    request: VerificationJwtTokenRequest,
+  ): Promise<VerificationJwtTokenResponse> {
+    const response: BaseResponseData = new BaseResponseData();
+
+    const result: UserResponse | null =
+      await this.authService.verifyAccessToken(request.access_token);
+
+    if (!result) {
+      response.setMessage(
+        HttpStatus.UNAUTHORIZED,
+        AUTH_MESSAGE_RESPONSE.UNAUTHORIZED,
+      );
+      return response;
+    }
+
+    response.setData(result);
     return response;
   }
 }

@@ -18,6 +18,8 @@ service AuthGRPCService {
   rpc ChangePassword (ChangePasswordRequest) returns (EmptyResponse) {}
   rpc VerificationChangePassword (VerificationChangePasswordRequest) returns (EmptyResponse) {}
   rpc ChangeNewPassword (ChangeNewPasswordRequest) returns (EmptyResponse) {}
+
+  rpc VerificationJwtToken (VerificationJwtTokenRequest) returns (VerificationJwtTokenResponse) {}
 }
 
 message UserRegisterRequest {
@@ -163,4 +165,14 @@ message EmptyResponse {
   int32 status = 1;
   string message = 2;
   string data = 3;
+}
+
+message VerificationJwtTokenRequest {
+  string access_token = 1;
+}
+
+message VerificationJwtTokenResponse {
+  int32 status = 1;
+  string message = 2;
+  UserDataResponse data = 3;
 }

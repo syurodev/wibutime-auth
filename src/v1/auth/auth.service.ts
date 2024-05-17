@@ -361,6 +361,34 @@ export class AuthService {
     return result;
   }
 
+  async verifyAccessToken(token: string): Promise<UserResponse | null> {
+    try {
+      // Verify the token's signature and get the payload
+      const payload = await this.jwtService.verifyAsync(
+        this.removeBearerPrefix(token),
+        {
+          secret: this.configService.get('CONFIG_JWT_SECRET'),
+        },
+      );
+
+      if (!payload.sub) return null;
+
+      const user = await this.userService.findOneUser(
+        payload.sub,
+        true,
+        false,
+        true,
+        true,
+      );
+
+      return user ? user : null;
+    } catch (error) {
+      // Token is invalid or malformed
+      console.log(error.message);
+      return null;
+    }
+  }
+
   /**
    * Gửi mã xác nhận đến địa chỉ email đã cho.
    *
@@ -915,5 +943,19 @@ export class AuthService {
       console.error(error.message);
       return false;
     }
+  }
+
+  /**
+   * Removes the "Bearer " prefix from the given token.
+   *
+   * @param token - The token string from which to remove the prefix.
+   * @returns The token string without the "Bearer " prefix.
+   */
+  private removeBearerPrefix(token: string): string {
+    const bearerPrefix = 'Bearer ';
+    if (token.startsWith(bearerPrefix)) {
+      return token.slice(bearerPrefix.length);
+    }
+    return token;
   }
 }
